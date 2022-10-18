@@ -1,100 +1,130 @@
 import React, { useEffect, useState, useRef } from "react";
 import {
-  Excalidraw,
-  exportToCanvas,
-  exportToSvg,
-  exportToBlob
+    Excalidraw,
+    exportToCanvas,
+    exportToSvg,
+    exportToBlob, loadSceneOrLibraryFromBlob, MIME_TYPES, parseLibraryTokensFromUrl, newElementWith
 } from "@excalidraw/excalidraw";
 import InitialData from "./initialData";
 
-import "./App.css";
-import initialData from "./initialData";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
+import "./App.scss";
+import type {ExcalidrawElement, InitializedExcalidrawImageElement} from "@excalidraw/excalidraw/types/element/types";
 import {
-  AppState,
-  ExcalidrawImperativeAPI,
-  ExcalidrawProps
+    AppState, BinaryFileData,
+    ExcalidrawImperativeAPI,
+    ExcalidrawProps,
+    LibraryItems
 } from "@excalidraw/excalidraw/types/types";
 import ExampleSidebar from "./sidebar/ExampleSidebar";
+import {ImportedLibraryData} from "@excalidraw/excalidraw/types/data/types";
+export const isInitializedImageElement = (
+    element: ExcalidrawElement | null,
+): element is InitializedExcalidrawImageElement => {
+    return !!element && element.type === "image" && !!element.fileId;
+};
+
+import {EVENT} from "@excalidraw/excalidraw/types/constants";
+
+const libExcalidraw = ['./electrical-engineering.excalidrawlib']
 
 const renderTopRightUI = () => {
-  return (
-      <button onClick={() => alert("This is dummy top right UI")}>
-        {" "}
-        Click me{" "}
-      </button>
-  );
+    return (
+        <button onClick={() => alert("This is dummy top right UI")}>
+            {" "}
+            Click me{" "}
+        </button>
+    );
 };
 
 const renderFooter = () => {
-  return (
-      <button onClick={() => alert("This is dummy footer")}>
-        {" "}
-        custom footer{" "}
-      </button>
-  );
+    return (
+        <button onClick={() => alert("This is dummy footer")}>
+            {" "}
+            custom footer{" "}
+        </button>
+    );
 };
 
 export default function App() {
-  const excalidrawRef = useRef<ExcalidrawImperativeAPI>(null);
+    const excalidrawRef = useRef<ExcalidrawImperativeAPI>(null);
 
-  const [viewModeEnabled, setViewModeEnabled] = useState(false);
-  const [zenModeEnabled, setZenModeEnabled] = useState(false);
-  const [gridModeEnabled, setGridModeEnabled] = useState(true);
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const [canvasUrl, setCanvasUrl] = useState<string | null>(null);
-  const [exportWithDarkMode, setExportWithDarkMode] = useState<boolean>(false);
-  const [shouldAddWatermark, setShouldAddWatermark] = useState<boolean>(false);
-  const [theme, setTheme] = useState<ExcalidrawProps["theme"]>("light");
+    const [viewModeEnabled, setViewModeEnabled] = useState(false);
+    const [zenModeEnabled, setZenModeEnabled] = useState(false);
+    const [gridModeEnabled, setGridModeEnabled] = useState(true);
+    const [blobUrl, setBlobUrl] = useState<string | null>(null);
+    const [canvasUrl, setCanvasUrl] = useState<string | null>(null);
+    const [exportWithDarkMode, setExportWithDarkMode] = useState<boolean>(false);
+    const [shouldAddWatermark, setShouldAddWatermark] = useState<boolean>(false);
+    const [theme, setTheme] = useState<ExcalidrawProps["theme"]>("light");
+    useEffect(() => {
+        loadLibrary();
+        updateScene();
+        const onHashChange = () => {
+            const hash = new URLSearchParams(window.location.hash.slice(1));
+            const libraryUrl = hash.get("addLibrary");
+            if (libraryUrl) {
+                // @ts-ignore
+                excalidrawRef.current!.updateLibrary(libraryUrl, hash.get("token"));
+            }
+        };
+        window.addEventListener("hashchange", onHashChange, false);
+        return () => {
+            window.removeEventListener("hashchange", onHashChange);
+        };
+    }, []);
 
-  useEffect(() => {
-    const onHashChange = () => {
-      const hash = new URLSearchParams(window.location.hash.slice(1));
-      const libraryUrl = hash.get("addLibrary");
-      if (libraryUrl) {
-        // @ts-ignore
-        excalidrawRef.current!.updateLibrary(libraryUrl, hash.get("token"));
-      }
-    };
-    window.addEventListener("hashchange", onHashChange, false);
-    return () => {
-      window.removeEventListener("hashchange", onHashChange);
-    };
-  }, []);
-
-  const updateScene = () => {
-    const sceneData = {
-      elements: [
-        {
-          type: "rectangle",
-          version: 141,
-          versionNonce: 361174001,
-          isDeleted: false,
-          id: "oDVXy8D6rom3H1-LLH2-f",
-          fillStyle: "hachure",
-          strokeWidth: 1,
-          strokeStyle: "solid",
-          roughness: 1,
-          opacity: 100,
-          angle: 0,
-          x: 100.50390625,
-          y: 93.67578125,
-          strokeColor: "#c92a2a",
-          backgroundColor: "transparent",
-          width: 186.47265625,
-          height: 141.9765625,
-          seed: 1968410350,
-          groupIds: []
+    const updateScene = () => {
+        if(!excalidrawRef) {
+            return;
         }
-      ],
-      appState: {
-        viewBackgroundColor: "#fff"
-      }
-    };
-    // @ts-ignore
-    excalidrawRef.current!.updateScene(sceneData);
-  };
+        fetch('./saved.excalidraw').then(res => res.blob())
+            .then(async file => {
+                // @ts-ignore
+                const contents = await loadSceneOrLibraryFromBlob(file, null, null);
+                excalidrawRef.current!.updateScene(contents.data as any);
+                const  data : any = contents.data;
+                const fileList = data.files;
 
+                if(fileList) {
+                    const binaryFileList: BinaryFileData[] = [];
+                    Object.keys(fileList).forEach(key =>{
+                        binaryFileList.push(fileList[key].dataURL)
+                    })
+                    excalidrawRef.current!.addFiles(binaryFileList);
+                    const params = excalidrawRef.current;
+                    params!.updateScene({
+                        elements: params!
+                            .getSceneElementsIncludingDeleted()
+                            .map((element) => {
+                                if (isInitializedImageElement(element) ) {
+                                    // @ts-ignore
+                                    return newElementWith(element, {status: "error",});
+                                }
+                                return element;
+                            }),
+                    });
+                }
+            });
+    };
+    const loadLibrary = async () => {
+        let libList: any[] =[]
+      fetch('./electrical-engineering.excalidrawlib')
+          .then(res => res.blob())
+          .then(async (file: any) => {
+            const contents = await loadSceneOrLibraryFromBlob(file, null, null);
+              libList = libList.concat((contents.data as ImportedLibraryData).libraryItems!)
+          }).then(() => fetch('./library-personal.excalidrawlib'))
+          .then(res => res.blob())
+          .then(async (file: any) => {
+              const contents = await loadSceneOrLibraryFromBlob(file, null, null);
+              libList = libList.concat((contents.data as ImportedLibraryData).libraryItems!);
+              console.log(libList)
+              excalidrawRef.current!.updateLibrary({
+                  libraryItems: libList,
+                  openLibraryMenu: true,
+              });
+          });;
+  };
   return (
       <div className="App">
         <ExampleSidebar>
@@ -103,6 +133,7 @@ export default function App() {
           <button className="update-scene" onClick={updateScene}>
             Update Scene
           </button>
+          <button onClick={loadLibrary}>Load Scene or Library</button>
           <button
               className="reset-scene"
               onClick={() => {
@@ -155,20 +186,18 @@ export default function App() {
           <Excalidraw
               ref={excalidrawRef}
               initialData={InitialData}
-              onChange={(elements: readonly ExcalidrawElement[], state: AppState) =>
-                  console.log("Elements :", elements, "State : ", state)
-              }
-
-              onPointerUpdate={(payload) => console.log(payload)}
-              onCollabButtonClick={() =>
-                  window.alert("You clicked on collab button")
-              }
+              // onChange={(elements: readonly ExcalidrawElement[], state: AppState) =>
+              //     console.log("Elements :", elements, "State : ", state)
+              // }
+              // onPointerUpdate={(payload) => console.log(payload)}
+              // onCollabButtonClick={() =>
+              //     window.alert("You clicked on collab button")
+              // }
               viewModeEnabled={viewModeEnabled}
               zenModeEnabled={zenModeEnabled}
               gridModeEnabled={gridModeEnabled}
               theme={theme}
               name="Custom name of drawing"
-              renderFooter={renderFooter}
               renderTopRightUI={renderTopRightUI}
           />
         </div>
@@ -195,7 +224,7 @@ export default function App() {
                   exportPadding: undefined, files: null, maxWidthOrHeight: 0,
                   elements: excalidrawRef.current!.getSceneElements(),
                   appState: {
-                    ...initialData.appState,
+                    ...InitialData.appState,
                     exportWithDarkMode
                   }
                 });
@@ -212,7 +241,7 @@ export default function App() {
                   elements: excalidrawRef.current!.getSceneElements(),
                   mimeType: "image/png",
                   appState: {
-                    ...initialData.appState,
+                    ...InitialData.appState,
                     exportWithDarkMode
                   },
                   files: null
@@ -231,7 +260,7 @@ export default function App() {
                 const canvas = await exportToCanvas({
                   elements: excalidrawRef.current!.getSceneElements(),
                   appState: {
-                    ...initialData.appState,
+                    ...InitialData.appState,
                     exportWithDarkMode
                   },
                   files: null
